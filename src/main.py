@@ -11,6 +11,7 @@ from src.feed_fetcher import fetch_all_feeds
 
 FIELD_CHAR_LIMIT = 1024
 EMBED_CHAR_LIMIT = 5500
+CONTINUATION_FIELD_NAME = "\u200B"
 
 # Load environment variables
 load_dotenv()
@@ -36,11 +37,19 @@ def _format_article_entry(article: dict) -> str:
     """Return the bullet list entry for an article."""
     summary = article['summary'] or ''
     summary = summary[:120] + ("..." if len(summary) > 120 else "")
+    
+    # Add Source and Time info
+    # Example: Wired Magazine 8:00am 11/21
+    source_info = f"{article.get('source', 'Unknown Source')}"
+    if article.get('formatted_date'):
+        source_info += f" {article['formatted_date']}"
+    
     if summary:
-        summary_line = f"{summary}\n"
+        content = f"{summary}\n_{source_info}_"
     else:
-        summary_line = ""
-    return f"• **[{article['title']}]({article['link']})**\n{summary_line}\n"
+        content = f"_{source_info}_"
+        
+    return f"• **[{article['title']}]({article['link']})**\n{content}\n\n"
 
 
 def _chunk_category_articles(category: str, articles: list[dict]) -> list[dict]:
@@ -48,24 +57,25 @@ def _chunk_category_articles(category: str, articles: list[dict]) -> list[dict]:
     if not articles:
         return []
 
+    emoji = CATEGORIES.get(category, {}).get("emoji", "•")
+    heading = f"{emoji} __**{category.upper()}**__\n"
+
     fields = []
-    part = 1
     current_value = ""
+    field_name = heading
 
     for article in articles:
         entry = _format_article_entry(article)
 
         if current_value and len(current_value) + len(entry) > FIELD_CHAR_LIMIT:
-            field_name = f"**{category}**" if part == 1 else f"**{category} (cont. {part})**"
-            fields.append({"name": field_name, "value": current_value.strip()})
+            fields.append({"name": field_name, "value": current_value.strip() + "\n"})
             current_value = entry
-            part += 1
+            field_name = CONTINUATION_FIELD_NAME
         else:
             current_value += entry
 
     if current_value:
-        field_name = f"**{category}**" if part == 1 else f"**{category} (cont. {part})**"
-        fields.append({"name": field_name, "value": current_value.strip()})
+        fields.append({"name": field_name, "value": current_value.strip() + "\n"})
 
     return fields
 
@@ -174,7 +184,7 @@ async def process_news(ctx=None):
             if ctx:
                 await ctx.send("No category fields available to share.")
             return
-
+        
         date_str = datetime.now().strftime('%Y-%m-%d')
         embeds_to_send = _paginate_embeds(fields, date_str)
 
