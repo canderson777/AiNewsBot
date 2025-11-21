@@ -3,9 +3,14 @@ import discord
 import asyncio
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
-from src.config import UPDATE_INTERVAL_HOURS
+from datetime import datetime
+
+from src.config import UPDATE_INTERVAL_HOURS, CATEGORIES
 from src.database import init_db, add_article
 from src.feed_fetcher import fetch_all_feeds
+
+FIELD_CHAR_LIMIT = 1024
+EMBED_CHAR_LIMIT = 5500
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +30,90 @@ intents = discord.Intents.default()
 intents.message_content = True # Required for commands if we use them
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+
+def _format_article_entry(article: dict) -> str:
+    """Return the bullet list entry for an article."""
+    summary = article['summary'] or ''
+    summary = summary[:120] + ("..." if len(summary) > 120 else "")
+    if summary:
+        summary_line = f"{summary}\n"
+    else:
+        summary_line = ""
+    return f"• **[{article['title']}]({article['link']})**\n{summary_line}\n"
+
+
+def _chunk_category_articles(category: str, articles: list[dict]) -> list[dict]:
+    """Split category articles into multiple fields capped at Discord's limit."""
+    if not articles:
+        return []
+
+    fields = []
+    part = 1
+    current_value = ""
+
+    for article in articles:
+        entry = _format_article_entry(article)
+
+        if current_value and len(current_value) + len(entry) > FIELD_CHAR_LIMIT:
+            field_name = f"**{category}**" if part == 1 else f"**{category} (cont. {part})**"
+            fields.append({"name": field_name, "value": current_value.strip()})
+            current_value = entry
+            part += 1
+        else:
+            current_value += entry
+
+    if current_value:
+        field_name = f"**{category}**" if part == 1 else f"**{category} (cont. {part})**"
+        fields.append({"name": field_name, "value": current_value.strip()})
+
+    return fields
+
+
+def _build_category_fields(articles_by_category: dict) -> list[dict]:
+    """Create a flattened list of embed fields from grouped articles."""
+    fields: list[dict] = []
+    for category, articles in articles_by_category.items():
+        fields.extend(_chunk_category_articles(category, articles))
+    return fields
+
+
+def _base_embed(date_str: str, page: int) -> discord.Embed:
+    """Create a base embed with consistent styling."""
+    if page == 1:
+        title = f"📰 Daily AI News Summary - {date_str}"
+        description = "Here are the latest updates from the world of AI."
+    else:
+        title = f"📰 Daily AI News Summary - {date_str} (Page {page})"
+        description = "Additional stories continue below."
+
+    return discord.Embed(title=title, description=description, color=discord.Color.dark_theme())
+
+
+def _paginate_embeds(fields: list[dict], date_str: str) -> list[discord.Embed]:
+    """Split fields across multiple embeds if we near Discord's 6000 char limit."""
+    embeds: list[discord.Embed] = []
+    page = 1
+    current_embed = _base_embed(date_str, page)
+    current_length = len(current_embed.title) + len(current_embed.description)
+
+    for field in fields:
+        field_length = len(field['name']) + len(field['value'])
+
+        # Start a new embed if adding this field would exceed the limit
+        if current_embed.fields and current_length + field_length > EMBED_CHAR_LIMIT:
+            embeds.append(current_embed)
+            page += 1
+            current_embed = _base_embed(date_str, page)
+            current_length = len(current_embed.title) + len(current_embed.description)
+
+        current_embed.add_field(name=field['name'], value=field['value'], inline=False)
+        current_length += field_length
+
+    if current_embed.fields:
+        embeds.append(current_embed)
+
+    return embeds
 
 @bot.event
 async def on_ready():
@@ -72,24 +161,29 @@ async def process_news(ctx=None):
         if ctx:
             await ctx.send(f"Found {len(articles)} new articles. Posting...")
 
+        # Group articles by category for chunking/pagination
+        articles_by_category = {category: [] for category in CATEGORIES.keys()}
         for article in articles:
-            embed = discord.Embed(
-                title=article['title'],
-                url=article['link'],
-                description=article['summary'],
-                color=article['color']
-            )
-            embed.set_author(name=article['category'])
-            if article['published']:
-                embed.set_footer(text=f"Published: {article['published']}")
-            
-            try:
-                await target_channel.send(embed=embed)
-                add_article(article['link'], article['title'], article['published'])
-                # Sleep briefly to avoid rate limits
-                await asyncio.sleep(1)
-            except Exception as e:
-                print(f"Failed to send article {article['link']}: {e}")
+            if article['category'] in articles_by_category:
+                articles_by_category[article['category']].append(article)
+
+        # Build embed fields and paginate if needed
+        fields = _build_category_fields(articles_by_category)
+        if not fields:
+            print("No category fields could be built.")
+            if ctx:
+                await ctx.send("No category fields available to share.")
+            return
+
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        embeds_to_send = _paginate_embeds(fields, date_str)
+
+        for embed in embeds_to_send:
+            await target_channel.send(embed=embed)
+
+        # Mark all articles as posted
+        for article in articles:
+            add_article(article['link'], article['title'], article['published'])
                 
     except Exception as e:
         print(f"Error in process_news: {e}")
@@ -111,4 +205,3 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     else:
         print("Please configure your .env file with a valid DISCORD_TOKEN.")
-

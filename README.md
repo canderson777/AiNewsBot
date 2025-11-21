@@ -19,13 +19,14 @@ A Discord bot that fetches AI news from various RSS feeds and posts them to a co
 Run the bot:
 
 ```bash
-python src/main.py
+python -m src.main
 ```
 
 ## Features
 
-- **Automatic Updates:** Checks for news every 8 hours (configurable in `src/config.py`).
-- **Manual Trigger:** Use `!force_news` in any channel the bot has access to (or the news channel) to force a check immediately.
+- **Automatic Updates:** Checks for news every 12 hours (configurable).
+- **Consolidated Posts:** Groups new articles into a single, organized daily summary.
+- **Manual Trigger:** Use `!force_news` to test immediately.
 - **Duplicate Prevention:** Uses a local SQLite database (`posted_articles.db`) to remember posted articles.
 - **Categorization:** News is color-coded by category:
   - Business & Industry (Gold)
