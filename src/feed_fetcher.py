@@ -33,9 +33,9 @@ def parse_feed(url, category_name, category_color):
             
             # Clean up summary
             summary = clean_html(summary)
-            # Truncate if too long
-            if len(summary) > 300:
-                summary = summary[:297] + "..."
+            # Truncate if too long, keeping it shorter for list format
+            if len(summary) > 150:
+                summary = summary[:147] + "..."
                 
             published = getattr(entry, 'published', '')
             
@@ -71,5 +71,13 @@ async def fetch_all_feeds():
         
     # Flatten the list of lists
     flat_results = [item for sublist in results for item in sublist]
-    return flat_results
-
+    
+    # Remove duplicates based on link (in case multiple feeds have same article)
+    unique_results = []
+    seen_links = set()
+    for article in flat_results:
+        if article['link'] not in seen_links:
+            seen_links.add(article['link'])
+            unique_results.append(article)
+            
+    return unique_results

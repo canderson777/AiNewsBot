@@ -38,7 +38,7 @@ CATEGORIES = {
 }
 
 # Update interval in hours
-UPDATE_INTERVAL_HOURS = 8
+UPDATE_INTERVAL_HOURS = 12
 
 # Database path
 DB_PATH = "posted_articles.db"
