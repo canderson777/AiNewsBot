@@ -29,11 +29,16 @@ python -m src.main
 - **Manual Trigger:** Use `!force_news` to test immediately.
 - **Duplicate Prevention:** Uses a local SQLite database (`posted_articles.db`) to remember posted articles.
 - **Categorization:** News is color-coded by category:
-  - Business & Industry (Gold)
-  - General & Broad (Blue)
-  - Research & Technical (Red)
+  - 🟡 Enterprise & Industry Strategy (Gold)
+  - 🔵 Tech & Innovation (Blue)
+  - 🔬 Research & Development (Red)
+  - 🛠️ Cloud & Infrastructure (Teal)
 
 ## Customization
 
 Edit `src/config.py` to add/remove RSS feeds or change categories.
+
+Clear the database (optional) to force it to repost everything with the new format:
+Remove-Item posted_articles.db
+python -m src.main
 

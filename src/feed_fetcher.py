@@ -2,6 +2,8 @@ import feedparser
 import re
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from time import mktime
 from src.config import CATEGORIES
 from src.database import is_article_posted
 
@@ -11,10 +13,31 @@ def clean_html(raw_html):
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext.strip()
 
+def parse_date(entry):
+    """Parse the published date from the entry."""
+    try:
+        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+            dt = datetime.fromtimestamp(mktime(entry.published_parsed))
+            return dt.strftime("%I:%M%p %m/%d").lower().lstrip("0")
+        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+             dt = datetime.fromtimestamp(mktime(entry.updated_parsed))
+             return dt.strftime("%I:%M%p %m/%d").lower().lstrip("0")
+        return ""
+    except Exception:
+        return ""
+
 def parse_feed(url, category_name, category_color):
     """Parse a single feed and return new articles."""
     try:
         feed = feedparser.parse(url)
+        feed_title = feed.feed.get('title', 'Unknown Source')
+        
+        # Shorten common long feed titles for cleaner display
+        if "Wired" in feed_title: feed_title = "Wired"
+        elif "Technology Review" in feed_title: feed_title = "MIT Tech Review"
+        elif "TechCrunch" in feed_title: feed_title = "TechCrunch"
+        elif "New York Times" in feed_title: feed_title = "NYT"
+        
         new_articles = []
         
         # Check only the latest 10 entries to avoid spamming on first run if DB is empty
@@ -38,12 +61,15 @@ def parse_feed(url, category_name, category_color):
                 summary = summary[:147] + "..."
                 
             published = getattr(entry, 'published', '')
+            formatted_date = parse_date(entry)
             
             new_articles.append({
                 'title': title,
                 'link': link,
                 'summary': summary,
                 'published': published,
+                'formatted_date': formatted_date,
+                'source': feed_title,
                 'category': category_name,
                 'color': category_color
             })
