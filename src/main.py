@@ -13,6 +13,10 @@ FIELD_CHAR_LIMIT = 1024
 EMBED_CHAR_LIMIT = 5500
 CONTINUATION_FIELD_NAME = "\u200B"
 
+MAX_PER_CATEGORY = 5
+MAX_TOTAL_ARTICLES = 15
+MAX_EMBED_PAGES = 3
+
 # Load environment variables
 load_dotenv()
 
@@ -113,6 +117,8 @@ def _paginate_embeds(fields: list[dict], date_str: str) -> list[discord.Embed]:
         # Start a new embed if adding this field would exceed the limit
         if current_embed.fields and current_length + field_length > EMBED_CHAR_LIMIT:
             embeds.append(current_embed)
+            if len(embeds) >= MAX_EMBED_PAGES:
+                return embeds
             page += 1
             current_embed = _base_embed(date_str, page)
             current_length = len(current_embed.title) + len(current_embed.description)
@@ -120,10 +126,32 @@ def _paginate_embeds(fields: list[dict], date_str: str) -> list[discord.Embed]:
         current_embed.add_field(name=field['name'], value=field['value'], inline=False)
         current_length += field_length
 
-    if current_embed.fields:
+    if current_embed.fields and len(embeds) < MAX_EMBED_PAGES:
         embeds.append(current_embed)
 
     return embeds
+
+
+def _select_top_articles(articles: list[dict]) -> list[dict]:
+    """Sort newest-first, cap per-category, then cap globally."""
+    sorted_all = sorted(
+        articles,
+        key=lambda a: a.get('published_dt') or datetime.min,
+        reverse=True,
+    )
+
+    per_category_count: dict = {}
+    kept: list[dict] = []
+    for article in sorted_all:
+        cat = article.get('category')
+        if per_category_count.get(cat, 0) >= MAX_PER_CATEGORY:
+            continue
+        kept.append(article)
+        per_category_count[cat] = per_category_count.get(cat, 0) + 1
+        if len(kept) >= MAX_TOTAL_ARTICLES:
+            break
+
+    return kept
 
 @bot.event
 async def on_ready():
@@ -160,20 +188,21 @@ async def process_news(ctx=None):
         target_channel = channel if channel else ctx.channel
         
         articles = await fetch_all_feeds()
-        
+
         if not articles:
             print("No new articles found.")
             if ctx:
                 await ctx.send("No new articles found.")
             return
-            
-        print(f"Found {len(articles)} new articles. Posting...")
-        if ctx:
-            await ctx.send(f"Found {len(articles)} new articles. Posting...")
 
-        # Group articles by category for chunking/pagination
+        selected = _select_top_articles(articles)
+        print(f"Fetched {len(articles)} fresh articles; selected top {len(selected)} to post.")
+        if ctx:
+            await ctx.send(f"Fetched {len(articles)} fresh articles; posting top {len(selected)}.")
+
+        # Group articles by category for chunking/pagination (preserve newest-first order per category)
         articles_by_category = {category: [] for category in CATEGORIES.keys()}
-        for article in articles:
+        for article in selected:
             if article['category'] in articles_by_category:
                 articles_by_category[article['category']].append(article)
 
@@ -184,15 +213,15 @@ async def process_news(ctx=None):
             if ctx:
                 await ctx.send("No category fields available to share.")
             return
-        
+
         date_str = datetime.now().strftime('%Y-%m-%d')
         embeds_to_send = _paginate_embeds(fields, date_str)
 
         for embed in embeds_to_send:
             await target_channel.send(embed=embed)
 
-        # Mark all articles as posted
-        for article in articles:
+        # Mark only the articles we actually posted as seen
+        for article in selected:
             add_article(article['link'], article['title'], article['published'])
                 
     except Exception as e:

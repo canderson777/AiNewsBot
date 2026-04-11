@@ -2,10 +2,12 @@ import feedparser
 import re
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import mktime
 from src.config import CATEGORIES
 from src.database import is_article_posted
+
+MAX_AGE_DAYS = 7
 
 def clean_html(raw_html):
     """Remove HTML tags from string."""
@@ -13,18 +15,23 @@ def clean_html(raw_html):
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext.strip()
 
-def parse_date(entry):
-    """Parse the published date from the entry."""
+def get_entry_datetime(entry):
+    """Return a datetime for the entry, or None if unavailable."""
     try:
-        if hasattr(entry, 'published_parsed') and entry.published_parsed:
-            dt = datetime.fromtimestamp(mktime(entry.published_parsed))
-            return dt.strftime("%I:%M%p %m/%d").lower().lstrip("0")
-        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-             dt = datetime.fromtimestamp(mktime(entry.updated_parsed))
-             return dt.strftime("%I:%M%p %m/%d").lower().lstrip("0")
-        return ""
+        if getattr(entry, 'published_parsed', None):
+            return datetime.fromtimestamp(mktime(entry.published_parsed))
+        if getattr(entry, 'updated_parsed', None):
+            return datetime.fromtimestamp(mktime(entry.updated_parsed))
     except Exception:
+        pass
+    return None
+
+def parse_date(entry):
+    """Format the entry's published date for display."""
+    dt = get_entry_datetime(entry)
+    if not dt:
         return ""
+    return dt.strftime("%I:%M%p %m/%d").lower().lstrip("0")
 
 def parse_feed(url, category_name, category_color):
     """Parse a single feed and return new articles."""
@@ -39,15 +46,21 @@ def parse_feed(url, category_name, category_color):
         elif "New York Times" in feed_title: feed_title = "NYT"
         
         new_articles = []
-        
+        cutoff = datetime.now() - timedelta(days=MAX_AGE_DAYS)
+
         # Check only the latest 10 entries to avoid spamming on first run if DB is empty
         # or to keep performance high
         for entry in feed.entries[:10]:
             link = entry.link
-            
+
             if is_article_posted(link):
                 continue
-                
+
+            # Skip entries with no parseable date or older than the freshness window
+            entry_dt = get_entry_datetime(entry)
+            if not entry_dt or entry_dt < cutoff:
+                continue
+
             title = entry.title
             # Prefer summary, fallback to description, then empty string
             summary = getattr(entry, 'summary', '')
@@ -68,6 +81,7 @@ def parse_feed(url, category_name, category_color):
                 'link': link,
                 'summary': summary,
                 'published': published,
+                'published_dt': entry_dt,
                 'formatted_date': formatted_date,
                 'source': feed_title,
                 'category': category_name,
