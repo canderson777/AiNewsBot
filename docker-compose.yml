@@ -1,0 +1,10 @@
+services:
+  ainewsbot:
+    build: .
+    container_name: ainewsbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist the SQLite database across container restarts and rebuilds
+      - ./data:/app/data
