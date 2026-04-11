@@ -9,6 +9,7 @@ def get_db_connection():
 
 def init_db():
     """Initialize the database with the necessary tables."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True) if os.path.dirname(DB_PATH) else None
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''

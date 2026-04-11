@@ -38,7 +38,71 @@ python -m src.main
 
 Edit `src/config.py` to add/remove RSS feeds or change categories.
 
-Clear the database (optional) to force it to repost everything with the new format:
-Remove-Item posted_articles.db
-python -m src.main
+Clear the database (optional) to force it to repost everything:
+
+```bash
+rm data/posted_articles.db
+```
+
+### Check feed health
+
+Run the feed checker to see which RSS URLs are reachable before starting the bot:
+
+```bash
+python scripts/check_feeds.py
+```
+
+---
+
+## Deploying to a VPS (Hostinger / Ubuntu + Docker)
+
+The bot runs as a Docker container — no web server or Traefik config needed, just Docker Compose.
+
+### 1. SSH into the server
+
+```bash
+ssh root@<your-server-ip>
+```
+
+### 2. Clone the repository
+
+```bash
+git clone https://github.com/canderson777/ainewsbot.git
+cd ainewsbot
+```
+
+### 3. Create your `.env` file
+
+```bash
+cp .env.example .env
+nano .env   # fill in DISCORD_TOKEN and DISCORD_CHANNEL_ID
+```
+
+### 4. Start the bot
+
+```bash
+docker compose up -d --build
+```
+
+The `--build` flag is only needed the first time or after code changes. For subsequent starts use `docker compose up -d`.
+
+### 5. Check the logs
+
+```bash
+docker compose logs -f
+```
+
+You should see the bot log in and the background task start. Use `!force_news` in Discord to trigger an immediate post.
+
+### Useful commands
+
+| Command | Purpose |
+|---|---|
+| `docker compose up -d --build` | Build and start (detached) |
+| `docker compose logs -f` | Stream live logs |
+| `docker compose restart` | Restart the bot |
+| `docker compose down` | Stop and remove container |
+| `docker compose pull && docker compose up -d --build` | Deploy latest code after a `git pull` |
+
+The `data/` directory on the host holds the SQLite database and persists across restarts and rebuilds. The bot auto-restarts if it crashes or if the server reboots (`restart: unless-stopped`).
 
