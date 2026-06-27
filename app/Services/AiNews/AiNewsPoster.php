@@ -2,9 +2,7 @@
 
 namespace App\Services\AiNews;
 
-use App\Models\PostedArticle;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AiNewsPoster
@@ -13,6 +11,7 @@ class AiNewsPoster
         private readonly FeedFetcher $feeds,
         private readonly DiscordMessageBuilder $messages,
         private readonly DiscordClient $discord,
+        private readonly PostedArticleStore $postedArticles,
     ) {
     }
 
@@ -74,19 +73,6 @@ class AiNewsPoster
 
     private function markPosted(Collection $articles): void
     {
-        DB::transaction(function () use ($articles): void {
-            foreach ($articles as $article) {
-                PostedArticle::query()->firstOrCreate(
-                    ['link_hash' => hash('sha256', $article['link'])],
-                    [
-                        'link' => $article['link'],
-                        'title' => $article['title'],
-                        'source' => $article['source'],
-                        'category' => $article['category'],
-                        'published_at' => $article['published_at'],
-                    ],
-                );
-            }
-        });
+        $this->postedArticles->remember($articles);
     }
 }

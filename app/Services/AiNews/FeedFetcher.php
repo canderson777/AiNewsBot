@@ -2,7 +2,6 @@
 
 namespace App\Services\AiNews;
 
-use App\Models\PostedArticle;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -10,9 +9,14 @@ use SimplePie\SimplePie;
 
 class FeedFetcher
 {
+    public function __construct(
+        private ?PostedArticleStore $postedArticles = null,
+    ) {
+    }
+
     public function fetchFreshArticles(): Collection
     {
-        $postedLinks = PostedArticle::query()->pluck('link')->all();
+        $postedLinks = $this->postedArticles()->postedLinks();
         $postedLinks = array_fill_keys($postedLinks, true);
         $seenLinks = [];
         $articles = collect();
@@ -32,6 +36,11 @@ class FeedFetcher
         }
 
         return $articles;
+    }
+
+    private function postedArticles(): PostedArticleStore
+    {
+        return $this->postedArticles ??= app(PostedArticleStore::class);
     }
 
     private function parseFeed(string $url, string $category, array $settings, CarbonImmutable $cutoff): array
