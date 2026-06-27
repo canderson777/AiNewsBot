@@ -26,7 +26,7 @@ class DiscordClient
 
     private function request(): PendingRequest
     {
-        return Http::withToken(config('ai-news.discord.bot_token'))
+        return Http::withToken(config('ai-news.discord.bot_token'), 'Bot')
             ->acceptJson()
             ->asJson()
             ->timeout(20)
