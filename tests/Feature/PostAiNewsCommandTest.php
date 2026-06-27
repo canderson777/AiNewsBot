@@ -56,6 +56,7 @@ class PostAiNewsCommandTest extends TestCase
         );
 
         Http::assertSent(fn ($request) => $request->url() === 'https://discord.com/api/v10/channels/123456/messages'
+            && $request->hasHeader('Authorization', 'Bot test-token')
             && $request['embeds'][0]['fields'][0]['value'] !== '');
     }
 
