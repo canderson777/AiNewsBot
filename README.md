@@ -1,119 +1,88 @@
 # AI News Bot
 
-A Discord bot that fetches AI news from RSS feeds and posts a categorized daily summary to a channel.
+Laravel Cloud-ready rewrite of the original Python Discord AI news bot.
 
-## Run Locally
+The original VPS/Docker implementation is preserved in `legacy-python/`. This Laravel version is designed to run as a scheduled job instead of a constantly connected Discord gateway process.
 
-1. Install Python 3.8+
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Copy `.env.example` to `.env` and fill in:
-   - `DISCORD_TOKEN` — from https://discord.com/developers/applications
-   - `DISCORD_CHANNEL_ID` — enable Developer Mode in Discord, right-click the channel → "Copy ID"
-4. Run the bot:
-   ```bash
-   python -m src.main
-   ```
-5. In Discord, type `!force_news` to trigger an immediate post.
+## What It Does
 
-## Set Up on VPS (Ubuntu + Docker)
+- Fetches AI news from the same RSS feeds as the Python bot.
+- Groups articles into the same four categories.
+- Posts a Discord embed digest to `DISCORD_CHANNEL_ID`.
+- Stores posted article links in the database to avoid duplicates.
+- Runs automatically twice daily through Laravel Scheduler.
+- Can be run manually with `php artisan news:post`.
 
-1. SSH into the server:
-   ```bash
-   ssh root@<your-server-ip>
-   ```
-2. Clone the repo:
-   ```bash
-   git clone https://github.com/canderson777/ainewsbot.git
-   cd ainewsbot
-   ```
-3. Create `.env`:
-   ```bash
-   cp .env.example .env
-   nano .env   # fill in DISCORD_TOKEN and DISCORD_CHANNEL_ID
-   ```
-4. Start the container:
-   ```bash
-   docker compose up -d --build
-   ```
-5. Check logs:
-   ```bash
-   docker compose logs -f
-   ```
+## Key Difference From The Python Bot
 
-### Deploying code changes
+The old bot used `discord.py` and stayed online in Discord, which made the `!force_news` command possible but required an always-on process.
+
+This Laravel version uses Discord's REST API and Laravel Scheduler. That is a better fit for Laravel Cloud and cheaper to run, but it does not keep a live Discord command listener connected.
+
+## Local Setup
 
 ```bash
-cd ~/ainewsbot
-git pull
-docker compose up -d --build
+composer install
+cp .env.example .env
+php artisan key:generate
 ```
 
-### Useful commands
+For local testing you can use SQLite:
 
-| Command | Purpose |
-|---|---|
-| `docker compose up -d --build` | Build and start (detached) |
-| `docker compose logs -f` | Stream live logs |
-| `docker compose restart` | Restart the bot |
-| `docker compose down` | Stop and remove container |
+```env
+DB_CONNECTION=sqlite
+DB_DATABASE=database/database.sqlite
+```
 
-The `data/` directory persists the SQLite dedupe database across restarts. The container auto-restarts on crash or reboot (`restart: unless-stopped`).
+Then create the database file and migrate:
 
-## Bot Defaults
+```bash
+php -r "file_exists('database/database.sqlite') || touch('database/database.sqlite');"
+php artisan migrate
+```
 
-Configured in [src/config.py](src/config.py) and [src/main.py](src/main.py):
+## Required Environment Variables
 
-| Setting | Default | Description |
-|---|---|---|
-| `UPDATE_INTERVAL_HOURS` | `12` | How often the bot checks feeds |
-| `MAX_AGE_DAYS` | `7` | Articles older than this are skipped |
-| `MAX_PER_CATEGORY` | `5` | Cap on articles posted per category |
-| `MAX_TOTAL_ARTICLES` | `15` | Cap on total articles per post |
-| `MAX_EMBED_PAGES` | `3` | Cap on Discord embed pages per post |
-| `DB_PATH` | `data/posted_articles.db` | SQLite dedupe database path |
+```env
+DISCORD_TOKEN=
+DISCORD_CHANNEL_ID=
+AI_NEWS_SCHEDULE_TIMEZONE=America/New_York
+AI_NEWS_MAX_AGE_DAYS=7
+AI_NEWS_MAX_PER_CATEGORY=5
+AI_NEWS_MAX_TOTAL_ARTICLES=15
+AI_NEWS_MAX_EMBED_PAGES=3
+```
 
-Command: `!force_news` — manually triggers a fetch-and-post cycle.
+For Laravel Cloud, use Postgres or MySQL. Do not use SQLite in production.
 
-## Sources
+## Commands
 
-News is grouped into four color-coded categories:
+Post to Discord:
 
-### 🟡 Enterprise & Industry Strategy
-- Fast Company — AI section
-- VentureBeat — AI
-- Crunchbase News — AI tag
-- Microsoft News — AI topic
+```bash
+php artisan news:post
+```
 
-### 🔵 Tech & Innovation
-- Wired — AI
-- TechCrunch — AI
-- GeekWire — AI tag
-- New York Times — AI
-- The Verge
-- Ars Technica — AI
-- The Guardian — AI
+Build the digest without sending to Discord or writing posted articles:
 
-### 🔬 Research & Development
-- OpenAI News
-- Google DeepMind Blog
-- MIT Technology Review
-- IEEE Spectrum — AI
+```bash
+php artisan news:post --dry-run
+```
 
-### 🛠️ Cloud & Infrastructure
-- AWS Machine Learning Blog
+Run tests:
 
-Edit [src/config.py](src/config.py) to add or remove feeds.
+```bash
+composer test
+```
 
-## Troubleshooting
+## Laravel Cloud Deployment Notes
 
-- **Reset the dedupe database** (forces the bot to repost everything within the age window):
-  ```bash
-  rm data/posted_articles.db
-  ```
-- **Check feed health** before starting the bot:
-  ```bash
-  python scripts/check_feeds.py
-  ```
+1. Create/import the app in Laravel Cloud from this repository.
+2. Add a managed Postgres or MySQL database.
+3. Set the database environment variables from Laravel Cloud.
+4. Set `DISCORD_TOKEN` and `DISCORD_CHANNEL_ID`.
+5. Run migrations during deploy with `php artisan migrate --force`.
+6. Ensure Laravel Scheduler is enabled for the app.
+7. After verifying Laravel Cloud posts successfully, stop the Hostinger `ainewsbot` container.
+
+The Hostinger bot should remain live until the Laravel Cloud version has posted at least one successful digest.
