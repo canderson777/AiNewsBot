@@ -11,6 +11,8 @@ return [
     'max_per_category' => (int) env('AI_NEWS_MAX_PER_CATEGORY', 5),
     'max_total_articles' => (int) env('AI_NEWS_MAX_TOTAL_ARTICLES', 15),
     'max_embed_pages' => (int) env('AI_NEWS_MAX_EMBED_PAGES', 3),
+    'history_path' => env('AI_NEWS_HISTORY_PATH'),
+    'history_limit' => (int) env('AI_NEWS_HISTORY_LIMIT', 1000),
 
     'categories' => [
         'Enterprise & Industry Strategy' => [
